@@ -557,6 +557,8 @@ class Board {
         while(!this._hit(this.cur.shape,this.cur.x,this.cur.y+1)){this.cur.y++;d++;}
         this.score+=d*2;
         this._lock();
+        // Reset gravity timer so newly spawned piece gets full interval before dropping
+        this.gravTimer=0;
     }
     hold(){
         if(!this.cur||this.gameOver||!this.started||this.holdUsed)return;
@@ -640,19 +642,20 @@ class Board {
         // B2B bonus=+1, Combo=+1 per step
 
         if(tspin==='mini'){
+            // Mini T-Spin: no-line or single only
             label=cl===0?'MINI T-SPIN':`MINI T-SPIN ${['','SINGLE','DOUBLE'][cl]||''}`;
             isB2BWorthy=cl>0;
-            this.lastGarbage=[0,1,2,0][cl]??0; // mini: 0-line=0? actually spec says 1 for mini
-            if(cl===0) this.lastGarbage=1; // mini no-line = 1 garbage
-            else this.lastGarbage=cl===1?1:cl===2?2:0;
+            // Spec: Mini T-Spin=1 garbage regardless of lines (0 or 1)
+            this.lastGarbage=1;
         } else if(tspin==='full'){
             label=cl===0?'T-SPIN':`T-SPIN ${['','SINGLE','DOUBLE','TRIPLE'][cl]||''}`;
             isB2BWorthy=true;
+            // Spec: T-Spin no-line=0, Single=2, Double=4, Triple=6
             this.lastGarbage=[0,2,4,6][cl]??0;
         } else if(cl>0){
             label=['','SINGLE','DOUBLE','TRIPLE','TETRIS'][cl]||'';
             isB2BWorthy=(cl===4);
-            // Single=0, Double=1, Triple=2, Tetris=4
+            // Spec: Single=0, Double=1, Triple=2, Tetris=4
             this.lastGarbage=[0,0,1,2,4][cl]??0;
         }
 
@@ -685,8 +688,9 @@ class Board {
         else                basePts=LINE_SCORES[cl]??0;
         if(b2bBonus)basePts=Math.floor(basePts*1.5);
         const comboPts=(cl>0&&this.combo>0)?50*this.combo*lv:0;
-        const pcPts=isPc?((b2bBonus&&cl===4)?PC_B2B_TETRIS:(PC_SCORES[cl]??0)):0;
-        this.score+=basePts*lv+comboPts+pcPts*lv;
+        // PC_B2B_TETRIS is a flat value (3200, not ×level); others are ×level
+        const pcPts=isPc?((b2bBonus&&cl===4)?PC_B2B_TETRIS:((PC_SCORES[cl]??0)*lv)):0;
+        this.score+=basePts*lv+comboPts+pcPts;
 
         this.lastActionLabel=label;
         this.lines+=cl;
@@ -830,6 +834,8 @@ class Input {
     _down(e){
         const k=e.code;
         if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space','ShiftLeft','ShiftRight'].includes(k))e.preventDefault();
+        // Block Enter repeat – only fire on genuine first press (not browser key-repeat)
+        if(k==='Enter'&&e.repeat)return;
         if(!this.held[k]){
             this.pressed[k]=true;
             if(k==='ArrowLeft') {this._das.left=0;this._dasActive.left=false;this._firstMove.left=true;}
@@ -936,10 +942,12 @@ class TouchInput {
         this._holdTimer=setTimeout(()=>{
             if(!this._moved&&!this._swipeFired){
                 this._holding=true;
+                // Use 100ms for touch soft-drop (keyboard uses 33ms but touch
+                // setInterval fires more aggressively on mobile — 100ms feels natural)
                 this._softDropInterval=setInterval(()=>{
                     const b=this.board;
                     if(b&&b.started&&!b.gameOver) b.softDrop();
-                },SOFT_DROP_INTERVAL);
+                },100);
             }
         },this.HOLD_THRESHOLD);
     }
@@ -1188,7 +1196,13 @@ class Game {
     }
 
     _send(obj){
-        if(this.conn&&this.conn.open)try{this.conn.send(obj);}catch(e){}
+        if(this.conn&&this.conn.open){
+            try{
+                // Always send as JSON string – avoids PeerJS serialisation
+                // bugs with plain objects on some browsers/versions
+                this.conn.send(JSON.stringify(obj));
+            }catch(e){ console.warn('send failed',e); }
+        }
     }
 
     /* ── Loop ─────────────────────────── */
@@ -1259,6 +1273,8 @@ class Game {
 
     _sendReady(){
         if(this._readySent) return;
+        // Ensure the WebRTC data channel is actually open before sending
+        if(!this.conn||!this.conn.open) return;
         this._readySent=true;
         this._send({type:'ready',name:this.myName});
         this._overlay('p1',true,'READY','Waiting for opponent…',false);
@@ -1379,13 +1395,18 @@ function overlayActionTouch(e,player){
 }
 
 function wireConn(conn){
-    conn.on('data', msg=>{ gm.conn=conn; gm.onPeerMsg(msg); });
-    // Delay registering close/error handlers by 2s so PeerJS internal
-    // handshake errors don't fire a false disconnect immediately after open.
+    conn.on('data', raw=>{
+        gm.conn=conn;
+        // Data may arrive as a string (JSON) or object depending on PeerJS version
+        let msg=raw;
+        if(typeof raw==='string'){ try{msg=JSON.parse(raw);}catch(e){return;} }
+        gm.onPeerMsg(msg);
+    });
+    // Delay close/error handlers 2.5s to skip PeerJS internal handshake noise
     setTimeout(()=>{
         conn.on('close',()=>{ if(gm&&gm.mode==='mp') gm.onPeerMsg({type:'disconnect'}); });
-        conn.on('error',err=>{ console.warn('conn error',err); /* non-fatal, ignore */ });
-    }, 2000);
+        conn.on('error',err=>{ console.warn('conn error (non-fatal)',err); });
+    }, 2500);
     gm.conn=conn;
 }
 
