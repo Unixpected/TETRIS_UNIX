@@ -1114,20 +1114,30 @@ class Game {
     onPeerMsg(msg){
         switch(msg.type){
             case 'ready':
+                // Both host and joiner can receive this.
+                // If I am host: opponent (joiner) is ready → ack + maybe start.
+                // If I am joiner: host is ready → just update label, wait for 'start'.
                 this._oppReady=true;
                 this.oppName=(msg.name||'Opponent').toUpperCase();
                 document.getElementById('label-p2').textContent=this.oppName;
-                this._overlay('p2',true,'READY','Waiting for host…');
-                this._send({type:'ready_ack',name:this.myName});
-                // Only host decides when to start
-                if(this.isHost&&this._readySent) this._startBothSides();
+                if(this.isHost){
+                    // Ack so joiner knows we got it, and update joiner's opp name
+                    this._send({type:'ready_ack',name:this.myName});
+                    this._overlay('p2',true,'READY','Both ready!');
+                    if(this._readySent) this._startBothSides();
+                } else {
+                    // Joiner: host is ready, update overlay
+                    this._overlay('p2',true,'READY','Host is ready!');
+                }
                 break;
             case 'ready_ack':
-                this._oppReady=true;
+                // Only joiner receives this (host sent it back).
+                // Joiner doesn't start the game — just update the overlay.
+                // The host will send 'start' when both are ready.
                 this.oppName=(msg.name||'Opponent').toUpperCase();
                 document.getElementById('label-p2').textContent=this.oppName;
-                // Only host decides when to start
-                if(this.isHost&&this._readySent) this._startBothSides();
+                this._overlay('p2',true,'READY','Host acknowledged!');
+                // Do NOT set _oppReady or call _startBothSides here — joiner waits for 'start'
                 break;
             case 'start':
                 // Host told us to start
@@ -1250,7 +1260,7 @@ class Game {
     }
 
     _sendState(){
-        if(this.mode==='mp')this._send({type:'state',board:this.p1.serialize()});
+        if(this.mode==='mp'&&this.p1.started)this._send({type:'state',board:this.p1.serialize()});
     }
 
     /* ── Render ───────────────────────── */
@@ -1324,8 +1334,12 @@ function peerId(code){ return 'tetrislan-'+code; }
 
 function wireConn(conn){
     conn.on('data', msg=>{ gm.conn=conn; gm.onPeerMsg(msg); });
-    conn.on('close',()=>{ gm.onPeerMsg({type:'disconnect'}); });
-    conn.on('error',()=>{ gm.onPeerMsg({type:'disconnect'}); });
+    // Delay registering close/error handlers by 2s so PeerJS internal
+    // handshake errors don't fire a false disconnect immediately after open.
+    setTimeout(()=>{
+        conn.on('close',()=>{ if(gm&&gm.mode==='mp') gm.onPeerMsg({type:'disconnect'}); });
+        conn.on('error',err=>{ console.warn('conn error',err); /* non-fatal, ignore */ });
+    }, 2000);
     gm.conn=conn;
 }
 
