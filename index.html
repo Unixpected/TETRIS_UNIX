@@ -1029,6 +1029,8 @@ class Game {
         this.myName='Player';this.oppName='Opponent';
         this.isHost=false;
         this.touchInput=null;
+        this._readySent=false;   // true once I pressed ENTER / tapped ready
+        this._oppReady=false;    // true once opponent sent 'ready'
 
         this.r1=new Renderer(document.getElementById('canvas-p1'));
         this.r2=new Renderer(document.getElementById('canvas-p2'));
@@ -1050,9 +1052,8 @@ class Game {
                 this._showTouchHint();
             }
         } else {
-            if(!this.p1.started||this.p1.gameOver){
-                this._sendReady();
-            }
+            if(this.p1.gameOver){ this.restart(); }
+            else if(!this._readySent){ this._sendReady(); }
         }
     }
 
@@ -1076,6 +1077,7 @@ class Game {
     /* ── Host ─────────────────────────── */
     startHost(name){
         this.myName=name;this.isHost=true;this.mode='mp';
+        this._readySent=false;this._oppReady=false;
         this._showGame();this._showMPUI();
         this.p1.reset();this.p2.reset();this.p1.started=false;
         this._overlay('p1',true,'READY?','Tap or press ENTER');
@@ -1087,6 +1089,7 @@ class Game {
     /* ── Join ─────────────────────────── */
     startJoin(name){
         this.myName=name;this.isHost=false;this.mode='mp';
+        this._readySent=false;this._oppReady=false;
         this._showGame();this._showMPUI();
         this.p1.reset();this.p2.reset();this.p1.started=false;
         this._overlay('p1',true,'READY?','Tap or press ENTER');
@@ -1100,6 +1103,7 @@ class Game {
         if(this.mode==='solo'){
             this.p1.reset();this.p1.started=true;this._overlay('p1',false);
         } else {
+            this._readySent=false;this._oppReady=false;
             this.p1.reset();this.p1.started=false;
             this._overlay('p1',true,'READY?','Tap or press ENTER');
             this._send({type:'restart',name:this.myName});
@@ -1110,18 +1114,25 @@ class Game {
     onPeerMsg(msg){
         switch(msg.type){
             case 'ready':
+                // Opponent pressed ready
+                this._oppReady=true;
                 this.oppName=(msg.name||'Opponent').toUpperCase();
                 document.getElementById('label-p2').textContent=this.oppName;
-                this._overlay('p2',true,'READY','Waiting for both…');
+                this._overlay('p2',true,'READY','Waiting for you…');
+                // Ack so they know we received it
                 this._send({type:'ready_ack',name:this.myName});
-                if(this.p1.started){this._startBothSides();}
+                // If I already pressed ready too, start the game
+                if(this._readySent) this._startBothSides();
                 break;
             case 'ready_ack':
+                // Opponent acknowledged our ready (they were already ready when we pressed)
+                this._oppReady=true;
                 this.oppName=(msg.name||'Opponent').toUpperCase();
                 document.getElementById('label-p2').textContent=this.oppName;
-                if(this.p1.started){this._startBothSides();}
+                if(this._readySent) this._startBothSides();
                 break;
             case 'start':
+                // Host told us to start
                 this._overlay('p1',false);this._overlay('p2',false);
                 this.p1.started=true;
                 document.getElementById('label-p1').textContent=this.myName.toUpperCase();
@@ -1140,6 +1151,7 @@ class Game {
                 flashGarbageHit('canvas-p1');
                 break;
             case 'restart':
+                this._oppReady=false;
                 this.p2.reset();
                 this._overlay('p2',true,'REMATCH','Opponent ready');
                 break;
@@ -1177,9 +1189,11 @@ class Game {
         const b=this.p1,inp=this.inp;
 
         if(inp.consume('Enter')){
-            if(!b.started||b.gameOver){
-                if(this.mode==='solo'){ b.reset();b.started=true;this._overlay('p1',false); }
-                else { this._sendReady(); }
+            if(this.mode==='solo'){
+                if(!b.started||b.gameOver){ b.reset();b.started=true;this._overlay('p1',false); }
+            } else {
+                if(b.gameOver){ this.restart(); }
+                else if(!this._readySent){ this._sendReady(); }
             }
         }
         if(!b.started||b.gameOver){ inp.clearFrame();return; }
@@ -1219,14 +1233,21 @@ class Game {
     }
 
     _sendReady(){
+        if(this._readySent) return; // don't send twice
+        this._readySent=true;
         this._send({type:'ready',name:this.myName});
         this._overlay('p1',true,'READY','Waiting for opponent…');
-        this.p1.started=true;
+        // If opponent already pressed ready, start immediately
+        if(this._oppReady) this._startBothSides();
     }
 
     _startBothSides(){
-        this._send({type:'start'});
+        // Only the host fires the actual start signal
+        if(this.isHost){
+            this._send({type:'start'});
+        }
         this._overlay('p1',false);this._overlay('p2',false);
+        this.p1.started=true;
         document.getElementById('label-p1').textContent=this.myName.toUpperCase();
         document.getElementById('label-p2').textContent=this.oppName;
         this._hudStatus('Game on!');
@@ -1306,9 +1327,11 @@ function randomCode(){
 function peerId(code){ return 'tetrislan-'+code; }
 
 function wireConn(conn){
+    let wasOpen=false;
+    conn.on('open',()=>{ wasOpen=true; });
     conn.on('data', msg=>{ gm.conn=conn; gm.onPeerMsg(msg); });
-    conn.on('close',()=>{ gm.onPeerMsg({type:'disconnect'}); });
-    conn.on('error',()=>{ gm.onPeerMsg({type:'disconnect'}); });
+    conn.on('close',()=>{ if(wasOpen) gm.onPeerMsg({type:'disconnect'}); });
+    conn.on('error',()=>{ if(wasOpen) gm.onPeerMsg({type:'disconnect'}); });
     gm.conn=conn;
 }
 
