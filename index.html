@@ -131,6 +131,20 @@ canvas.game-canvas.clear-flash{animation:clear-flash 0.15s ease-in-out 2}
 .overlay-content{text-align:center}
 .overlay-title{font-family:'Orbitron',monospace;font-size:26px;font-weight:900;color:var(--accent);text-shadow:var(--glow-cyan);letter-spacing:4px;margin-bottom:10px}
 .overlay-sub{font-size:11px;color:var(--text-dim);letter-spacing:2px}
+.overlay-btn{
+  margin-top:18px;padding:12px 32px;
+  font-family:'Orbitron',monospace;font-size:13px;font-weight:700;letter-spacing:3px;
+  background:transparent;border:2px solid var(--accent);color:var(--accent);
+  cursor:pointer;text-transform:uppercase;
+  position:relative;overflow:hidden;transition:color .15s;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+}
+.overlay-btn::before{content:'';position:absolute;inset:0;background:var(--accent);transform:translateX(-105%);transition:transform .2s;z-index:0}
+.overlay-btn:hover::before,.overlay-btn:active::before{transform:translateX(0)}
+.overlay-btn:hover,.overlay-btn:active{color:var(--bg);box-shadow:var(--glow-cyan)}
+.overlay-btn span{position:relative;z-index:1}
+.overlay-btn.danger{border-color:var(--accent2);color:var(--accent2)}
+.overlay-btn.danger::before{background:var(--accent2)}
 
 .side-panel{display:flex;flex-direction:column;gap:14px;padding:10px 8px;background:var(--bg-panel);border:1px solid var(--border);min-width:108px;align-self:stretch;align-items:center}
 .side-panel.hidden{display:none}
@@ -280,7 +294,10 @@ canvas.mini-canvas{background:var(--bg-board);border:1px solid var(--border);ima
       <div class="game-overlay" id="overlay-p1">
         <div class="overlay-content">
           <div class="overlay-title" id="otitle-p1">TETRIS</div>
-          <div class="overlay-sub" id="osub-p1">Press ENTER or Tap to start</div>
+          <div class="overlay-sub" id="osub-p1">Press ENTER or tap button</div>
+          <button class="overlay-btn" id="overlay-btn-p1" onclick="overlayAction('p1')" ontouchend="overlayActionTouch(event,'p1')">
+            <span id="overlay-btn-label-p1">&#9654; START</span>
+          </button>
         </div>
       </div>
     </div>
@@ -1080,7 +1097,7 @@ class Game {
         this._readySent=false;this._oppReady=false;
         this._showGame();this._showMPUI();
         this.p1.reset();this.p2.reset();this.p1.started=false;
-        this._overlay('p1',true,'READY?','Tap or press ENTER');
+        this._overlay('p1',true,'READY?','Tap or press ENTER','⚑ READY');
         this._overlay('p2',true,'WAITING','Opponent connecting…');
         this._initTouch();
         this._start();
@@ -1092,7 +1109,7 @@ class Game {
         this._readySent=false;this._oppReady=false;
         this._showGame();this._showMPUI();
         this.p1.reset();this.p2.reset();this.p1.started=false;
-        this._overlay('p1',true,'READY?','Tap or press ENTER');
+        this._overlay('p1',true,'READY?','Tap or press ENTER','⚑ READY');
         this._overlay('p2',true,'WAITING','Waiting for host…');
         this._initTouch();
         this._start();
@@ -1105,7 +1122,7 @@ class Game {
         } else {
             this._readySent=false;this._oppReady=false;
             this.p1.reset();this.p1.started=false;
-            this._overlay('p1',true,'READY?','Tap or press ENTER');
+            this._overlay('p1',true,'READY?','Tap or press ENTER','⚑ READY');
             this._send({type:'restart',name:this.myName});
         }
     }
@@ -1123,11 +1140,11 @@ class Game {
                 if(this.isHost){
                     // Ack so joiner knows we got it, and update joiner's opp name
                     this._send({type:'ready_ack',name:this.myName});
-                    this._overlay('p2',true,'READY','Both ready!');
+                    this._overlay('p2',true,'READY','Both ready!',false);
                     if(this._readySent) this._startBothSides();
                 } else {
                     // Joiner: host is ready, update overlay
-                    this._overlay('p2',true,'READY','Host is ready!');
+                    this._overlay('p2',true,'READY','Host is ready!',false);
                 }
                 break;
             case 'ready_ack':
@@ -1136,7 +1153,7 @@ class Game {
                 // The host will send 'start' when both are ready.
                 this.oppName=(msg.name||'Opponent').toUpperCase();
                 document.getElementById('label-p2').textContent=this.oppName;
-                this._overlay('p2',true,'READY','Host acknowledged!');
+                this._overlay('p2',true,'READY','Host acknowledged!',false);
                 // Do NOT set _oppReady or call _startBothSides here — joiner waits for 'start'
                 break;
             case 'start':
@@ -1244,7 +1261,7 @@ class Game {
         if(this._readySent) return;
         this._readySent=true;
         this._send({type:'ready',name:this.myName});
-        this._overlay('p1',true,'READY','Waiting for opponent…');
+        this._overlay('p1',true,'READY','Waiting for opponent…',false);
         // Only host starts the game; joiner just waits for 'start' message
         if(this.isHost&&this._oppReady) this._startBothSides();
     }
@@ -1270,10 +1287,10 @@ class Game {
             const el=document.getElementById('overlay-p1');
             if(el.classList.contains('hidden')){
                 this._overlay('p1',true,'GAME OVER',
-                    this.mode==='solo'?`Score: ${this.p1.score} — Tap to retry`:`Score: ${this.p1.score}`);
+                    this.mode==='solo'?`Score: ${this.p1.score}`:`Score: ${this.p1.score}`,this.mode==='solo'?'↺ RETRY':'↺ RETRY');
             } else {
                 document.getElementById('osub-p1').textContent=
-                    this.mode==='solo'?`Score: ${this.p1.score} — Tap to retry`:`Score: ${this.p1.score}`;
+                    this.mode==='solo'?`Score: ${this.p1.score}`:`Score: ${this.p1.score}`;
             }
         }
         Renderer.mini(document.getElementById('hold-p1'),this.p1.held);
@@ -1292,12 +1309,29 @@ class Game {
         document.getElementById('lines-p2').textContent=this.p2.lines;
     }
     _hudStatus(m){ document.getElementById('hud-status').textContent=m; }
-    _overlay(p,show,title,sub){
+    _overlay(p,show,title,sub,btnLabel){
         const el=document.getElementById(`overlay-${p}`);
         if(show){
             el.classList.remove('hidden');
             if(title)document.getElementById(`otitle-${p}`).textContent=title;
             if(sub)document.getElementById(`osub-${p}`).textContent=sub;
+            // Update button label if present in this overlay
+            const btn=document.getElementById(`overlay-btn-label-${p}`);
+            if(btn){
+                if(btnLabel===false){
+                    // Hide button (e.g. waiting state where button does nothing)
+                    const btnEl=document.getElementById(`overlay-btn-${p}`);
+                    if(btnEl)btnEl.style.display='none';
+                } else {
+                    const btnEl=document.getElementById(`overlay-btn-${p}`);
+                    if(btnEl)btnEl.style.display='';
+                    btn.textContent=btnLabel||'▶ START';
+                    const btnEl2=document.getElementById(`overlay-btn-${p}`);
+                    if(btnEl2){
+                        btnEl2.classList.toggle('danger',!!(title&&title.includes('OVER')));
+                    }
+                }
+            }
         } else el.classList.add('hidden');
     }
 
@@ -1331,6 +1365,18 @@ function randomCode(){
     return s;
 }
 function peerId(code){ return 'tetrislan-'+code; }
+
+/* Overlay button handler — works for both touch and mouse */
+function overlayAction(player){
+    if(player==='p1'&&gm){
+        gm._tapStartOrRestart();
+    }
+}
+function overlayActionTouch(e,player){
+    e.preventDefault();
+    e.stopPropagation();
+    overlayAction(player);
+}
 
 function wireConn(conn){
     conn.on('data', msg=>{ gm.conn=conn; gm.onPeerMsg(msg); });
