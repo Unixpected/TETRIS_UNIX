@@ -1114,22 +1114,20 @@ class Game {
     onPeerMsg(msg){
         switch(msg.type){
             case 'ready':
-                // Opponent pressed ready
                 this._oppReady=true;
                 this.oppName=(msg.name||'Opponent').toUpperCase();
                 document.getElementById('label-p2').textContent=this.oppName;
-                this._overlay('p2',true,'READY','Waiting for you…');
-                // Ack so they know we received it
+                this._overlay('p2',true,'READY','Waiting for host…');
                 this._send({type:'ready_ack',name:this.myName});
-                // If I already pressed ready too, start the game
-                if(this._readySent) this._startBothSides();
+                // Only host decides when to start
+                if(this.isHost&&this._readySent) this._startBothSides();
                 break;
             case 'ready_ack':
-                // Opponent acknowledged our ready (they were already ready when we pressed)
                 this._oppReady=true;
                 this.oppName=(msg.name||'Opponent').toUpperCase();
                 document.getElementById('label-p2').textContent=this.oppName;
-                if(this._readySent) this._startBothSides();
+                // Only host decides when to start
+                if(this.isHost&&this._readySent) this._startBothSides();
                 break;
             case 'start':
                 // Host told us to start
@@ -1233,19 +1231,17 @@ class Game {
     }
 
     _sendReady(){
-        if(this._readySent) return; // don't send twice
+        if(this._readySent) return;
         this._readySent=true;
         this._send({type:'ready',name:this.myName});
         this._overlay('p1',true,'READY','Waiting for opponent…');
-        // If opponent already pressed ready, start immediately
-        if(this._oppReady) this._startBothSides();
+        // Only host starts the game; joiner just waits for 'start' message
+        if(this.isHost&&this._oppReady) this._startBothSides();
     }
 
     _startBothSides(){
-        // Only the host fires the actual start signal
-        if(this.isHost){
-            this._send({type:'start'});
-        }
+        // Only host calls this. Send start to joiner, then start locally.
+        this._send({type:'start'});
         this._overlay('p1',false);this._overlay('p2',false);
         this.p1.started=true;
         document.getElementById('label-p1').textContent=this.myName.toUpperCase();
@@ -1327,11 +1323,9 @@ function randomCode(){
 function peerId(code){ return 'tetrislan-'+code; }
 
 function wireConn(conn){
-    let wasOpen=false;
-    conn.on('open',()=>{ wasOpen=true; });
     conn.on('data', msg=>{ gm.conn=conn; gm.onPeerMsg(msg); });
-    conn.on('close',()=>{ if(wasOpen) gm.onPeerMsg({type:'disconnect'}); });
-    conn.on('error',()=>{ if(wasOpen) gm.onPeerMsg({type:'disconnect'}); });
+    conn.on('close',()=>{ gm.onPeerMsg({type:'disconnect'}); });
+    conn.on('error',()=>{ gm.onPeerMsg({type:'disconnect'}); });
     gm.conn=conn;
 }
 
