@@ -347,8 +347,10 @@ body.mobile-layout #dpad{display:flex;}
       </div>
       <div id="rival-next-wrap">
         <div id="rival-next-lbl">NEXT</div>
-        <canvas id="hold-p2" class="mini-canvas" width="80" height="72"></canvas>
+        <canvas id="next-p2" class="mini-canvas" width="80" height="160"></canvas>
       </div>
+      <!-- keep hold-p2 as hidden stub so existing refs don't break -->
+      <canvas id="hold-p2" class="mini-canvas" width="80" height="72" style="display:none"></canvas>
     </div>
 
     <!-- keep these hidden stubs so JS refs don't break -->
@@ -858,7 +860,7 @@ class Game{
                 this.p2.applyRemote(msg.board);
                 if(msg.board.gameOver)this._overlay('p2',true,'GAME OVER',`Score: ${msg.board.score}`);
                 this.r2.draw(this.p2);
-                Renderer.mini(document.getElementById('hold-p2'),this.p2.held);this._updateHUD2();break;
+                Renderer.nextPieces(document.getElementById('next-p2'),this.p2.queue);this._updateHUD2();break;
             case 'garbage':this.p1.addGarbage(msg.lines);flashGarbageHit('canvas-p1');break;
             case 'restart':this._oppReady=false;this.p2.reset();this._overlay('p2',true,'REMATCH','Opponent ready');break;
             case 'disconnect':this._overlay('p2',true,'DISCONNECTED','Opponent left');this._hudStatus('Opponent disconnected');break;
@@ -981,36 +983,39 @@ class Game{
     ═══════════════════════════════════════════════════════ */
     _applyMobileLayout(){
         const vw = window.innerWidth, vh = window.innerHeight;
-        const HUD_H = 42, PAD = 4;
-        const playH = vh - HUD_H;           // full height, no D-pad space
+        const HUD_H = 42;
+        const MARGIN = 10;  // breathing room top + bottom
+        const PAD = 3;
+        const playH = vh - HUD_H - MARGIN * 2;
         const rivalVisible = !document.getElementById('rival-panel').classList.contains('hidden');
 
-        // Hide D-pad completely in mobile MP (gestures handle input)
+        // Hide D-pad — gestures handle input on mobile MP
         const dpad = document.getElementById('dpad');
         if(dpad) dpad.style.display = 'none';
 
-        // ── game-layout fills the whole play area ──
+        // game-layout: full area with margin
         const gl = document.getElementById('game-layout');
-        gl.style.cssText = 'position:relative;display:block;width:100%;height:'+playH+'px;overflow:hidden;background:#080c14;';
+        gl.style.cssText = 'position:relative;display:block;width:100%;'+
+            'height:'+(playH + MARGIN*2)+'px;overflow:hidden;background:#080c14;';
 
-        // ── Hide legacy side panels ──
+        // Hide legacy side panels
         ['panel-left','panel-right','panel-p2-right','mp-mobile-stats'].forEach(id=>{
             const el=document.getElementById(id); if(el) el.style.display='none';
         });
 
-        // ── Rival column: 20% of screen width ──
-        const RIVAL_W = rivalVisible ? Math.floor(vw * 0.20) : 0;
+        // ── Rival column width: 22% ──
+        const RIVAL_W = rivalVisible ? Math.round(vw * 0.22) : 0;
         const P1_W    = vw - RIVAL_W;
 
-        // ── P1 board: fill entire left column, max height ──
-        const cellH = Math.floor((playH - PAD*2) / ROWS);
-        const cellW = Math.floor((P1_W  - PAD*2) / COLS);
-        const cell  = Math.min(cellH, cellW, 32);
+        // ── P1 board: sized to fit in left zone with margin ──
+        const cellH = Math.floor(playH / ROWS);
+        const cellW = Math.floor((P1_W - PAD*2) / COLS);
+        const cell  = Math.min(cellH, cellW, 30);
         const p1w = cell * COLS, p1h = cell * ROWS;
 
         const bc1 = document.getElementById('bc-p1');
-        const t1  = Math.floor((playH - p1h) / 2);
-        const l1  = Math.floor((P1_W  - p1w) / 2);
+        const t1  = MARGIN + Math.floor((playH - p1h) / 2);
+        const l1  = Math.floor((P1_W - p1w) / 2);
         bc1.style.cssText = 'position:absolute;left:'+l1+'px;top:'+t1+
             'px;display:flex;flex-direction:column;align-items:center;gap:0;z-index:10;';
 
@@ -1019,51 +1024,68 @@ class Game{
         cv1.style.cssText = 'width:'+p1w+'px;height:'+p1h+'px;display:block;max-width:none;';
         this.r1 = new Renderer(cv1);
 
-        // P1 overlay: fixed, full screen above HUD, always tappable
+        // P1 overlay: fixed above HUD, always tappable
         const ov1 = document.getElementById('overlay-p1');
         ov1.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:'+HUD_H+
             'px;z-index:500;display:flex;align-items:center;justify-content:center;background:rgba(6,10,16,0.93);';
 
-        // ── Rival column: right 20% ──
+        // ── Rival column ──
         if(rivalVisible){
-            // Board takes top portion of rival column (1:2 aspect)
-            const rw = RIVAL_W - PAD*2;
-            // How much height is available for the rival board?
-            // Reserve space below for: label(14) + score(18) + lv(18) + lines(18) + next-label(12) + next-canvas(rw*2/3) + gaps
-            const reserveBelow = 14 + 18 + 18 + 18 + 12 + Math.floor(rw * 0.8) + 30;
-            const rhMax = playH - PAD*2 - reserveBelow;
-            const rh = Math.min(Math.floor(rw * 2), rhMax);
+            const rw = RIVAL_W - PAD * 2;
+
+            // Split rival column into sections:
+            // [label] [board ~40% of height] [score/lv/lines] [NEXT ~remaining]
+            const labelH  = 14;
+            const statsH  = 54;  // score+lv+lines at ~18px each
+            const nextLblH = 12;
+            const boardH  = Math.min(Math.floor(rw * 2), Math.floor(playH * 0.42));
+            const nextH   = playH - labelH - boardH - statsH - nextLblH - 20; // remaining
 
             const rp = document.getElementById('rival-panel');
             rp.style.cssText = 'position:absolute;right:0;top:0;bottom:0;width:'+RIVAL_W+
-                'px;display:flex;flex-direction:column;align-items:center;gap:3px;'+
-                'background:#0a1018;border-left:1px solid #1a3a5c;padding:'+PAD+'px '+(PAD-1)+'px;'+
+                'px;display:flex;flex-direction:column;align-items:center;gap:2px;'+
+                'background:#0a1018;border-left:1px solid #1a3a5c;'+
+                'padding:'+MARGIN+'px '+(PAD+1)+'px;'+
                 'overflow:hidden;z-index:50;box-sizing:border-box;';
 
+            // Label
             document.getElementById('label-p2').style.cssText =
                 'font-family:Orbitron,monospace;font-size:6px;letter-spacing:1px;'+
-                'color:#4a7a9b;text-align:center;flex-shrink:0;width:100%;';
+                'color:#4a7a9b;text-align:center;flex-shrink:0;width:100%;margin-bottom:2px;';
 
+            // Board canvas
             const cv2 = document.getElementById('canvas-p2');
-            cv2.width = rw; cv2.height = rh;
-            cv2.style.cssText = 'width:'+rw+'px;height:'+rh+'px;display:block;max-width:none;flex-shrink:0;border:1px solid #1a3a5c;';
+            cv2.width = rw; cv2.height = boardH;
+            cv2.style.cssText = 'width:'+rw+'px;height:'+boardH+'px;display:block;'+
+                'max-width:none;flex-shrink:0;border:1px solid #1a3a5c;';
             this.r2 = new Renderer(cv2);
 
             const ov2 = document.getElementById('overlay-p2');
-            if(ov2) ov2.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(6,10,16,0.82);z-index:5;';
+            if(ov2) ov2.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;'+
+                'display:flex;align-items:center;justify-content:center;'+
+                'background:rgba(6,10,16,0.82);z-index:5;';
 
-            // Stats below rival board
+            // Stats
             const rs = document.getElementById('rival-stats');
-            if(rs) rs.style.cssText = 'display:flex;flex-direction:column;gap:2px;width:100%;';
+            if(rs) rs.style.cssText = 'display:flex;flex-direction:column;gap:1px;width:100%;flex-shrink:0;';
+            // Make stat values smaller
+            document.querySelectorAll('.rival-stat-val').forEach(el=>{el.style.fontSize='11px';});
+            document.querySelectorAll('.rival-stat-lbl').forEach(el=>{el.style.fontSize='6px';});
 
-            // NEXT mini canvas below stats
+            // NEXT section
             const rnw = document.getElementById('rival-next-wrap');
-            if(rnw){
-                const ncv = document.getElementById('hold-p2'); // reuse hold-p2 canvas for next display
-                const ns = Math.floor(rw * 0.85);
-                if(ncv){ ncv.width=ns; ncv.height=Math.floor(ns*0.75); ncv.style.cssText='width:'+ns+'px;height:'+Math.floor(ns*0.75)+'px;display:block;max-width:none;border:1px solid #1a3a5c;'; }
-                rnw.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;width:100%;border-top:1px solid #1a3a5c;padding-top:3px;margin-top:2px;';
+            const ncv = document.getElementById('next-p2');
+            if(ncv && nextH > 20){
+                ncv.width = rw;
+                ncv.height = Math.max(nextH, 30);
+                ncv.style.cssText = 'width:'+rw+'px;height:'+Math.max(nextH,30)+'px;'+
+                    'display:block;max-width:none;border:1px solid #1a3a5c;flex-shrink:0;';
             }
+            if(rnw) rnw.style.cssText = 'display:flex;flex-direction:column;align-items:center;'+
+                'gap:2px;width:100%;border-top:1px solid #1a3a5c;padding-top:3px;margin-top:1px;flex-shrink:0;';
+            // Style the NEXT label inside rival-next-wrap
+            const rnl = document.getElementById('rival-next-lbl');
+            if(rnl) rnl.style.cssText = 'font-family:Orbitron,monospace;font-size:6px;letter-spacing:1px;color:#4a7a9b;';
         }
     }
 
