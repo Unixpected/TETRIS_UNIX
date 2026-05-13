@@ -200,14 +200,17 @@ body.mobile-layout #game-layout{padding-bottom:190px}
 body.mobile-layout #game-layout.mp-active {
   position: relative;
   display: block;
-  padding: 0 0 190px 0;
+  /* fill screen minus hud bar; dpad is fixed so doesn't affect flow */
+  height: calc(100vh - 42px);
+  padding: 0;
   overflow: hidden;
 }
 
-/* P1: big, centered, fills available height */
+/* P1: big, centered in the playfield above the dpad */
 body.mobile-layout #game-layout.mp-active #bc-p1 {
   position: absolute;
-  top: 50%;
+  /* Center in the area above the dpad (190px) */
+  top: calc((100% - 190px) / 2);
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 10;
@@ -247,6 +250,29 @@ body.mobile-layout #game-layout.mp-active #canvas-p2 {
 /* Hide P2 side panel in mobile MP */
 body.mobile-layout #game-layout.mp-active #panel-p2-right {
   display: none !important;
+}
+
+/* Fix P1 overlay in mobile MP - cover full playfield above dpad/hud */
+body.mobile-layout #game-layout.mp-active #bc-p1 #overlay-p1 {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 232px; /* 190px dpad + 42px hud */
+  z-index: 500;
+  border: none;
+}
+body.mobile-layout #game-layout.mp-active #overlay-p1 .overlay-title {
+  font-size: 20px;
+}
+body.mobile-layout #game-layout.mp-active #overlay-p1 .overlay-btn {
+  margin-top: 14px;
+  padding: 16px 40px;
+  font-size: 15px;
+  /* Ensure tappable */
+  touch-action: manipulation;
+  z-index: 501;
+  position: relative;
 }
 
 /* Mini stat bar at top-left for P1 in mobile MP */
@@ -1003,18 +1029,15 @@ class Game{
         if(document.body.classList.contains('mobile-layout')){
             const gl=document.getElementById('game-layout');
             gl.classList.add('mp-active');
-            // Resize P1 canvas to fill most of the available screen height
-            const dpad=190, hud=42, top=0;
-            const avail=window.innerHeight - dpad - hud - 20;
-            const cellH=Math.floor(avail/ROWS);
-            const cellW=Math.floor(window.innerWidth*0.62/COLS);
-            const cell=Math.min(cellH,cellW,28);
-            const w=cell*COLS, h=cell*ROWS;
-            const cv1=document.getElementById('canvas-p1');
-            cv1.style.width=w+'px'; cv1.style.height=h+'px';
-            cv1.style.removeProperty('width'); cv1.style.removeProperty('height');
-            cv1.style.cssText=`width:${w}px;height:${h}px;`;
-            this.r1=new Renderer(cv1);
+            // Available height = screen - hud(42) - dpad(190) - some padding
+            const avail = window.innerHeight - 42 - 190 - 16;
+            const cellH = Math.floor(avail / ROWS);
+            const cellW = Math.floor(window.innerWidth * 0.64 / COLS);
+            const cell  = Math.min(cellH, cellW, 28);
+            const w = cell * COLS, h = cell * ROWS;
+            const cv1 = document.getElementById('canvas-p1');
+            cv1.style.cssText = `width:${w}px;height:${h}px;`;
+            this.r1 = new Renderer(cv1);
         }
     }
 }
