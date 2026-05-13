@@ -1040,40 +1040,57 @@ class Game{
     }
     _applyMobileMPLayout(){
         const vw=window.innerWidth,vh=window.innerHeight;
-        const DPAD_H=190,HUD_H=42,PAD=8;
+        const DPAD_H=190,HUD_H=42,PAD=6;
         const playH=vh-HUD_H-DPAD_H-PAD*2;
-        // P1 main board sizing
+
+        // Opponent mini board: fixed small size, top-right
+        const OPP_W=60,OPP_H=120;
+        const STAT_W=70; // stats panel on left
+
+        // P1 board: fit in the middle space between stat and opp panels
+        const availW=vw-STAT_W-OPP_W-PAD*4;
         const cellH=Math.floor(playH/ROWS);
-        const cellW=Math.floor(vw*0.72/COLS);
-        const cell=Math.min(cellH,cellW,26);
+        const cellW=Math.floor(availW/COLS);
+        const cell=Math.min(cellH,cellW,24);
         const p1w=cell*COLS,p1h=cell*ROWS;
-        // game-layout: relative block
+
+        // game-layout: relative block, full playfield height
         const gl=document.getElementById('game-layout');
-        gl.style.cssText=`position:relative;display:block;width:100%;height:${playH+PAD*2}px;padding:${PAD}px;overflow:hidden;`;
+        gl.style.cssText=`position:relative;display:block;width:100%;height:${playH+PAD*2}px;padding:0;overflow:hidden;background:var(--bg);`;
+
         // hide all side panels
-        ['panel-left','panel-right','panel-p2-right'].forEach(id=>{document.getElementById(id).style.display='none';});
-        // P1 board: absolutely centered
+        ['panel-left','panel-right','panel-p2-right'].forEach(id=>{
+            document.getElementById(id).style.display='none';
+        });
+
+        // P1 board: centered in the remaining space (after stat panel on left)
         const bc1=document.getElementById('bc-p1');
-        const l1=Math.floor((vw-p1w)/2),t1=Math.floor((playH-p1h)/2)+PAD;
+        const l1=STAT_W+PAD+Math.floor((availW-p1w)/2);
+        const t1=PAD+Math.floor((playH-p1h)/2);
         bc1.style.cssText=`position:absolute;left:${l1}px;top:${t1}px;display:flex;flex-direction:column;align-items:center;gap:0;z-index:10;`;
+
         const cv1=document.getElementById('canvas-p1');
         cv1.style.cssText=`width:${p1w}px;height:${p1h}px;display:block;`;
         this.r1=new Renderer(cv1);
-        // P2 board: small top-right
-        const opp_w=Math.floor(vw*0.20),opp_h=opp_w*2;
+
+        // P2 opponent board: tiny, top-right corner
         const bc2=document.getElementById('bc-p2');
-        bc2.style.cssText=`position:absolute;right:6px;top:6px;z-index:20;display:flex;flex-direction:column;align-items:center;gap:0;background:rgba(6,10,16,0.92);border:1px solid #1a3a5c;padding:3px;`;
-        document.getElementById('label-p2').style.cssText=`font-size:7px;letter-spacing:1px;margin-bottom:2px;color:#4a7a9b;`;
+        bc2.style.cssText=`position:absolute;right:${PAD}px;top:${PAD}px;z-index:20;display:flex;flex-direction:column;align-items:center;gap:0;background:rgba(6,10,16,0.95);border:1px solid #1a3a5c;padding:2px;`;
+        document.getElementById('label-p2').style.cssText=`font-family:'Orbitron',monospace;font-size:6px;letter-spacing:1px;margin-bottom:1px;color:#4a7a9b;text-align:center;`;
         const cv2=document.getElementById('canvas-p2');
-        cv2.style.cssText=`width:${opp_w}px;height:${opp_h}px;display:block;`;
+        cv2.style.cssText=`width:${OPP_W}px;height:${OPP_H}px;display:block;`;
+
+        // hide P2 overlay (too small to matter)
         const ov2=document.getElementById('overlay-p2');
         if(ov2)ov2.style.display='none';
-        // mini stats top-left
+
+        // mini stats: top-left, same height zone as opponent board
         const mstats=document.getElementById('mp-mobile-stats');
-        if(mstats)mstats.style.cssText=`display:flex;position:absolute;left:6px;top:6px;z-index:20;flex-direction:column;gap:4px;background:rgba(6,10,16,0.92);border:1px solid #1a3a5c;padding:5px 7px;`;
-        // P1 overlay: fixed above dpad+hud so READY is always tappable
+        if(mstats)mstats.style.cssText=`display:flex;position:absolute;left:${PAD}px;top:${PAD}px;z-index:20;flex-direction:column;gap:3px;background:rgba(6,10,16,0.95);border:1px solid #1a3a5c;padding:5px 6px;width:${STAT_W-PAD*2}px;`;
+
+        // P1 overlay: fixed, full width, above dpad+hud — READY always visible & tappable
         const ov1=document.getElementById('overlay-p1');
-        ov1.style.cssText=`position:fixed;top:0;left:0;right:0;bottom:${DPAD_H+HUD_H}px;z-index:500;display:flex;align-items:center;justify-content:center;background:rgba(6,10,16,0.92);`;
+        ov1.style.cssText=`position:fixed;top:0;left:0;right:0;bottom:${DPAD_H+HUD_H}px;z-index:500;display:flex;align-items:center;justify-content:center;background:rgba(6,10,16,0.93);`;
     }
 }
 
