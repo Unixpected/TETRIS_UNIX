@@ -195,6 +195,90 @@ body.mobile-layout #game-layout{padding-bottom:190px}
   .menu-container{padding:20px 16px;gap:14px}
   canvas.game-canvas{width:180px!important;height:360px!important}
 }
+
+/* ── Mobile Multiplayer Layout ── */
+body.mobile-layout #game-layout.mp-active {
+  position: relative;
+  display: block;
+  padding: 0 0 190px 0;
+  overflow: hidden;
+}
+
+/* P1: big, centered, fills available height */
+body.mobile-layout #game-layout.mp-active #bc-p1 {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+}
+body.mobile-layout #game-layout.mp-active #canvas-p1 {
+  /* Size is set dynamically by JS */
+}
+
+/* Hide P1 side panels in mobile MP — stats shown inline */
+body.mobile-layout #game-layout.mp-active #panel-left,
+body.mobile-layout #game-layout.mp-active #panel-right {
+  display: none !important;
+}
+
+/* P2: small board pinned to top-right corner */
+body.mobile-layout #game-layout.mp-active #bc-p2 {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 20;
+  background: rgba(6,10,16,0.85);
+  border: 1px solid var(--border);
+  padding: 4px;
+  backdrop-filter: blur(2px);
+}
+body.mobile-layout #game-layout.mp-active #bc-p2 .player-label {
+  font-size: 8px;
+  letter-spacing: 2px;
+  text-align: center;
+  margin-bottom: 2px;
+}
+body.mobile-layout #game-layout.mp-active #canvas-p2 {
+  width: 72px !important;
+  height: 144px !important;
+  display: block;
+}
+/* Hide P2 side panel in mobile MP */
+body.mobile-layout #game-layout.mp-active #panel-p2-right {
+  display: none !important;
+}
+
+/* Mini stat bar at top-left for P1 in mobile MP */
+#mp-mobile-stats {
+  display: none;
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 20;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(6,10,16,0.85);
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  backdrop-filter: blur(2px);
+}
+body.mobile-layout #game-layout.mp-active #mp-mobile-stats {
+  display: flex;
+}
+.mp-stat-row {
+  font-family: 'Orbitron', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.mp-stat-val {
+  font-size: 13px;
+  color: var(--accent3);
+  text-shadow: var(--glow-yellow);
+  display: block;
+}
 </style>
 </head>
 <body>
@@ -279,6 +363,12 @@ body.mobile-layout #game-layout{padding-bottom:190px}
 <!-- ═══════════════════ GAME SCREEN ═══════════════════ -->
 <div id="game-screen" class="screen">
   <div id="game-layout">
+    <!-- Mobile MP mini stats (shown only in mobile multiplayer) -->
+    <div id="mp-mobile-stats">
+      <div class="mp-stat-row">SCORE<span class="mp-stat-val" id="mob-score">0</span></div>
+      <div class="mp-stat-row">LV<span class="mp-stat-val" id="mob-level">1</span></div>
+      <div class="mp-stat-row">LINES<span class="mp-stat-val" id="mob-lines">0</span></div>
+    </div>
     <!-- P1 Left Panel -->
     <div class="side-panel" id="panel-left">
       <div class="panel-section"><div class="panel-label">HOLD</div><canvas id="hold-p1" class="mini-canvas" width="100" height="90"></canvas></div>
@@ -877,7 +967,14 @@ class Game{
         Renderer.mini(document.getElementById('hold-p1'),this.p1.held);
         Renderer.nextPieces(document.getElementById('next-p1'),this.p1.queue);
     }
-    _updateHUD1(){document.getElementById('score-p1').textContent=this.p1.score;document.getElementById('level-p1').textContent=this.p1.level;document.getElementById('lines-p1').textContent=this.p1.lines;}
+    _updateHUD1(){
+        document.getElementById('score-p1').textContent=this.p1.score;
+        document.getElementById('level-p1').textContent=this.p1.level;
+        document.getElementById('lines-p1').textContent=this.p1.lines;
+        // Sync mobile mini stats
+        const ms=document.getElementById('mob-score');const ml=document.getElementById('mob-level');const mln=document.getElementById('mob-lines');
+        if(ms)ms.textContent=this.p1.score;if(ml)ml.textContent=this.p1.level;if(mln)mln.textContent=this.p1.lines;
+    }
     _updateHUD2(){document.getElementById('score-p2').textContent=this.p2.score;document.getElementById('level-p2').textContent=this.p2.level;document.getElementById('lines-p2').textContent=this.p2.lines;}
     _hudStatus(m){document.getElementById('hud-status').textContent=m;}
     _overlay(p,show,title,sub,btnLabel,danger){
@@ -902,6 +999,23 @@ class Game{
         document.getElementById('bc-p2').classList.remove('hidden');
         document.getElementById('panel-p2-right').classList.remove('hidden');
         document.getElementById('panel-right').classList.remove('hidden');
+        // Apply mobile multiplayer layout
+        if(document.body.classList.contains('mobile-layout')){
+            const gl=document.getElementById('game-layout');
+            gl.classList.add('mp-active');
+            // Resize P1 canvas to fill most of the available screen height
+            const dpad=190, hud=42, top=0;
+            const avail=window.innerHeight - dpad - hud - 20;
+            const cellH=Math.floor(avail/ROWS);
+            const cellW=Math.floor(window.innerWidth*0.62/COLS);
+            const cell=Math.min(cellH,cellW,28);
+            const w=cell*COLS, h=cell*ROWS;
+            const cv1=document.getElementById('canvas-p1');
+            cv1.style.width=w+'px'; cv1.style.height=h+'px';
+            cv1.style.removeProperty('width'); cv1.style.removeProperty('height');
+            cv1.style.cssText=`width:${w}px;height:${h}px;`;
+            this.r1=new Renderer(cv1);
+        }
     }
 }
 
@@ -930,6 +1044,7 @@ function showMenu(){
     if(gm&&gm.touchInput){gm.touchInput.destroy();gm.touchInput=null;}
     ['host-screen','join-screen'].forEach(id=>document.getElementById(id).classList.remove('active'));
     document.getElementById('game-screen').classList.remove('active');
+    document.getElementById('game-layout').classList.remove('mp-active');
     document.getElementById('menu-screen').classList.add('active');
 }
 
